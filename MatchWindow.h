@@ -17,6 +17,9 @@
 #include <QAuthenticator>
 #include <QFile>
 #include <QRegularExpression>
+#include <QComboBox>
+#include <QListWidget>
+#include <QJsonArray>
 
 class MatchWindow : public QWidget {
     enum GameState {
@@ -55,8 +58,17 @@ private:
 
     QTimer *gameStateTimer;
     QNetworkAccessManager *networkManager;
+    QComboBox *queueSelector;
+
     QString riotClientPort;
     QString riotClientToken;
+    QString summonersName;
+    QString rank;
+
+    QLabel *avatarLabel;
+    QLabel *summonerLabel;
+    QLabel *rankInfoLabel;
+    QListWidget *matchHistoryList;
 
     GameState currentState;
     bool overlayEnabled;
@@ -65,6 +77,7 @@ private:
     void switchToState(GameState state);
     void setupOverlay();
     bool findRiotClientCredentials();
+    void obtainInfo(QString qType);
 };
 
 #endif // MATCHWINDOW_H
