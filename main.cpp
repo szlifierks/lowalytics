@@ -1,10 +1,19 @@
 #include <QApplication>
-#include <QPushButton>
+#include "MatchWindow.h"
+
 
 int main(int argc, char *argv[]) {
-    QApplication a(argc, argv);
-    QPushButton button("Hello world!", nullptr);
-    button.resize(200, 100);
-    button.show();
-    return QApplication::exec();
+    QSslConfiguration config = QSslConfiguration::defaultConfiguration();
+    config.setPeerVerifyMode(QSslSocket::VerifyNone);
+    QSslConfiguration::setDefaultConfiguration(config);
+
+    qputenv("QT_LOGGING_RULES", "qt.network.ssl.warning=false");
+
+    QApplication app(argc, argv);
+
+    MatchWindow window;
+    window.setWindowTitle("");
+    window.show();
+
+    return app.exec();
 }
