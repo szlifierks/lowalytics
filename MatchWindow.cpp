@@ -9,11 +9,77 @@
 #include <QRandomGenerator>
 #include <QEventLoop>
 #include <QSslConfiguration>
-
+#include <QGraphicsDropShadowEffect>
+#include <QPropertyAnimation>
+#include <QPainter>
+#include <QPainterPath>
 
 MatchWindow::MatchWindow(QWidget *parent) : QWidget(parent), currentState(WAITING), overlayEnabled(false), last(WAITING) {
+//styles etc
+    QApplication::setStyle("Fusion");
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(30, 30, 30));
+    palette.setColor(QPalette::WindowText, QColor(220, 220, 220));
+    palette.setColor(QPalette::Base, QColor(40, 40, 40));
+    palette.setColor(QPalette::AlternateBase, QColor(50, 50, 50));
+    palette.setColor(QPalette::Button, QColor(60, 60, 60));
+    palette.setColor(QPalette::ButtonText, QColor(220, 220, 220));
+    QApplication::setPalette(palette);
+
+    setStyleSheet(R"(
+    QWidget {
+        background: #1e1e1e;
+        border-radius: 16px;
+    }
+    QLabel#header {
+        font-size: 20px;
+        font-weight: bold;
+        color: #fff;
+        margin-bottom: 12px;
+    }
+    QListWidget {
+        background: #2c2c2c;
+        border: 1px solid #3c3c3c;
+        border-radius: 8px;
+        font-size: 14px;
+        padding: 8px;
+        color: #dddddd;
+    }
+    QListWidget::item {
+        margin: 6px 0;
+        padding: 6px;
+        border-radius: 6px;
+    }
+    QListWidget::item:selected {
+        background: #444;
+        color: #fff;
+    }
+    QComboBox {
+        background: #2c2c2c;
+        border-radius: 6px;
+        padding: 4px 12px;
+        font-size: 14px;
+        color: #ffffff;
+    }
+    QLabel {
+        font-size: 15px;
+        color: #ffffff;
+    }
+    QLabel#playerName {
+        font-size: 18px;
+    }
+)");
+
+    // Prosta animacja fade-in
+    QPropertyAnimation *fadeAnimation = new QPropertyAnimation(this, "windowOpacity", this);
+    fadeAnimation->setDuration(700);
+    fadeAnimation->setStartValue(0.0);
+    fadeAnimation->setEndValue(1.0);
+    fadeAnimation->start(QAbstractAnimation::DeleteWhenStopped);
+
     avatarLabel = new QLabel;
     summonerLabel = new QLabel;
+    summonerLabel->setObjectName("playerName");
     rankInfoLabel = new QLabel;
     matchHistoryList = new QListWidget;
     queueSelector = new QComboBox;
@@ -31,6 +97,14 @@ MatchWindow::MatchWindow(QWidget *parent) : QWidget(parent), currentState(WAITIN
 
     avatarLabel->setFixedSize(64, 64);
     avatarLabel->setPixmap(QPixmap());
+    avatarLabel->setStyleSheet(R"(
+        border-radius: 32px;
+        border: 2px solid #e0e4ea;
+        overflow: hidden;
+    )");
+    avatarLabel->setScaledContents(true);
+    resize(900, 600);
+    setMinimumSize(800, 500);
     summonerLabel->setText("");
 
     QVBoxLayout *rankLayout = new QVBoxLayout;
@@ -42,6 +116,31 @@ MatchWindow::MatchWindow(QWidget *parent) : QWidget(parent), currentState(WAITIN
             obtainInfo("RANKED_FLEX_SR");
     });
 
+    auto *historyHeader = new QLabel("Match history");
+    historyHeader->setObjectName("header");
+    matchHistoryList->setSpacing(6);
+    matchHistoryList->setStyleSheet(R"(
+        QListWidget {
+            background: #2c2c2c;
+            border: 1px solid #3c3c3c;
+            border-radius: 8px;
+            font-size: 14px;
+            padding: 8px;
+            color: #dddddd;
+        }
+        QListWidget::item {
+            margin: 8px 0;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #444;
+        }
+        QListWidget::item:selected {
+            background: #444;
+            color: #fff;
+        }
+    )");
+    matchHistoryList->setWordWrap(true);
+
     rankInfoLabel->setText("");
     rankLayout->addWidget(queueSelector);
     rankLayout->addWidget(rankInfoLabel);
@@ -51,6 +150,15 @@ MatchWindow::MatchWindow(QWidget *parent) : QWidget(parent), currentState(WAITIN
     topLayout->addLayout(rankLayout);
 
     waitingLayout->addLayout(topLayout);
+
+    // separator
+    QFrame *line = new QFrame;
+    line->setFrameShape(QFrame::HLine);
+    line->setFrameShadow(QFrame::Sunken);
+    line->setStyleSheet("color: #e0e4ea; margin: 8px 0;");
+    waitingLayout->addWidget(line);
+
+    waitingLayout->addWidget(historyHeader);
     waitingLayout->addWidget(matchHistoryList);
 
     // --- Widok champselect ---
@@ -70,6 +178,11 @@ MatchWindow::MatchWindow(QWidget *parent) : QWidget(parent), currentState(WAITIN
     stackedWidget->addWidget(inGameWidget);
 
     mainLayout->addWidget(stackedWidget);
+    mainLayout->setContentsMargins(24, 24, 24, 24);
+    mainLayout->setSpacing(18);
+    waitingLayout->setSpacing(16);
+    topLayout->setSpacing(18);
+    rankLayout->setSpacing(8);
 
     networkManager = new QNetworkAccessManager(this);
 
@@ -80,6 +193,8 @@ MatchWindow::MatchWindow(QWidget *parent) : QWidget(parent), currentState(WAITIN
     gameStateTimer->start(2000);
 
     switchToState(WAITING);
+    loadChamps();
+    loadQueues();
 }
 
 MatchWindow::~MatchWindow() {
@@ -139,12 +254,12 @@ void MatchWindow::toggleOverlay() {
     overlayEnabled = !overlayEnabled;
 
     if (overlayEnabled) {
-        toggleOverlayAction->setText("Wyłącz overlay");
+        toggleOverlayAction->setText("Turn off overlay");
         if (currentState == IN_GAME) {
             setupOverlay();
         }
     } else {
-        toggleOverlayAction->setText("Włącz overlay");
+        toggleOverlayAction->setText("Turn on overlay");
         setWindowFlags(Qt::Window);
         show();
     }
@@ -316,8 +431,6 @@ void MatchWindow::switchToState(GameState state) {
     }
 }
 
-// MatchWindow.cpp
-
 void MatchWindow::obtainInfo(QString qType) {
     QNetworkRequest summonerReq(QUrl("https://127.0.0.1:" + riotClientPort + "/lol-summoner/v1/current-summoner"));
     summonerReq.setRawHeader("Authorization", "Basic " + QByteArray(("riot:" + riotClientToken).toUtf8()).toBase64());
@@ -337,9 +450,18 @@ void MatchWindow::obtainInfo(QString qType) {
             QNetworkReply *avatarReply = networkManager->get(avatarReq);
             connect(avatarReply, &QNetworkReply::finished, this, [this, avatarReply]() {
                 if (avatarReply->error() == QNetworkReply::NoError) {
-                    QPixmap pix;
-                    pix.loadFromData(avatarReply->readAll());
-                    avatarLabel->setPixmap(pix.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                    QPixmap rawPix;
+                    rawPix.loadFromData(avatarReply->readAll());
+                    QPixmap circle(64, 64);
+                    circle.fill(Qt::transparent);
+                    QPainter painter(&circle);
+                    painter.setRenderHint(QPainter::Antialiasing, true);
+                    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+                    QPainterPath path;
+                    path.addEllipse(0, 0, 64, 64);
+                    painter.setClipPath(path);
+                    painter.drawPixmap(0, 0, 64, 64, rawPix.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                    avatarLabel->setPixmap(circle);
                 }
                 avatarReply->deleteLater();
             });
@@ -361,7 +483,11 @@ void MatchWindow::obtainInfo(QString qType) {
                     QString division = queue["division"].toString();
                     int wins = queue["wins"].toInt();
                     int losses = queue["losses"].toInt();
-                    rankInfoLabel->setText(QString("%1 %2 (%3W/%4L)").arg(tier, division).arg(wins).arg(losses));
+                    double wr = (wins + losses > 0)
+                        ? (double(wins) / double(wins + losses) * 100.0)
+                        : 0.0;
+                    rankInfoLabel->setText(QString("%1 %2 (%3W/%4L) ~%5% WR")
+                        .arg(tier).arg(division).arg(wins).arg(losses).arg(wr, 0, 'f', 1));
                 }
             }
         }
@@ -374,20 +500,76 @@ void MatchWindow::obtainInfo(QString qType) {
     connect(historyReply, &QNetworkReply::finished, this, [this, historyReply]() {
         if (historyReply->error() == QNetworkReply::NoError) {
             QJsonObject obj = QJsonDocument::fromJson(historyReply->readAll()).object();
-            QJsonArray games = obj["games"].toArray();
+            QJsonObject gamesObj = obj["games"].toObject();
+            QJsonArray games = gamesObj["games"].toArray();
             matchHistoryList->clear();
             for (const QJsonValue &gameVal : games) {
                 QJsonObject game = gameVal.toObject();
-                QString champ = game["championName"].toString();
-                int kills = game["kills"].toInt();
-                int deaths = game["deaths"].toInt();
-                int assists = game["assists"].toInt();
-                bool win = game["win"].toBool();
-                QString result = win ? "Win" : "Loss";
-                matchHistoryList->addItem(QString("%1 - %2 - %3/%4/%5").arg(champ, result).arg(kills).arg(deaths).arg(assists));
+                QJsonArray participants = game["participants"].toArray();
+                QJsonObject player;
+                for (const QJsonValue &p : participants) {
+                    QJsonObject part = p.toObject();
+                    if (part["stats"].isObject()) {
+                        player = part;
+                        break;
+                    }
+                }
+                int champId = player["championId"].toInt();
+                QString champ = champIdName.value(champId, QString::number(champId));
+                QJsonObject stats = player["stats"].toObject();
+                int kills = stats["kills"].toInt();
+                int deaths = stats["deaths"].toInt();
+                int assists = stats["assists"].toInt();
+                bool win = stats["win"].toBool();
+                int queueId = game["queueId"].toInt();
+                QString qName = qIdName.value(queueId, QString::number(queueId));
+                double cs = stats["totalMinionsKilled"].toDouble()
+                            + stats["neutralMinionsKilled"].toDouble();
+                double gameDuration = game["gameDuration"].toDouble();
+                double minutes = gameDuration > 0 ? (gameDuration / 60.0) : 1.0;
+                double csPerMin = cs / minutes;
+
+                matchHistoryList->addItem(QString("%1 (%2) %3/%4/%5 | %6 | CS: %7 (%8/min)")
+                    .arg(champ)
+                    .arg(win ? "Win" : "Loss")
+                    .arg(kills)
+                    .arg(deaths)
+                    .arg(assists)
+                    .arg(qName)
+                    .arg(cs, 0, 'f', 0)
+                    .arg(csPerMin, 0, 'f', 1));
             }
         }
         historyReply->deleteLater();
         qDebug() << "historia: "<< matchHistoryList->count();
     });
 }
+
+void MatchWindow::loadChamps(){
+    QNetworkRequest req(QUrl("https://ddragon.leagueoflegends.com/cdn/14.12.1/data/en_US/champion.json"));
+    QNetworkReply *reply = networkManager->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonObject data = QJsonDocument::fromJson(reply->readAll()).object()["data"].toObject();
+            for (const QString &key : data.keys()) {
+                QJsonObject champ = data[key].toObject();
+                int id = champ["key"].toString().toInt();
+                QString name = champ["name"].toString();
+                champIdName[id] = name;
+            }
+        }
+        reply->deleteLater();
+    });
+}
+
+void MatchWindow::loadQueues(){
+    qIdName[400] = "Normal Draft";
+    qIdName[420] = "Ranked Solo";
+    qIdName[430] = "Normal Blind";
+    qIdName[440] = "Ranked Flex";
+    qIdName[450] = "ARAM";
+    qIdName[700] = "Clash";
+    qIdName[900] = "URF";
+    qIdName[1020] = "One for All";
+}
+

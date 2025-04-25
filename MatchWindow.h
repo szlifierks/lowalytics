@@ -60,6 +60,9 @@ private:
     QNetworkAccessManager *networkManager;
     QComboBox *queueSelector;
 
+    QMap<int, QString> champIdName;
+    QMap<int, QString> qIdName;
+
     QString riotClientPort;
     QString riotClientToken;
     QString summonersName;
@@ -78,6 +81,8 @@ private:
     void setupOverlay();
     bool findRiotClientCredentials();
     void obtainInfo(QString qType);
+    void loadChamps();
+    void loadQueues();
 };
 
 #endif // MATCHWINDOW_H
